@@ -30,6 +30,9 @@ struct Color {
 };
 Color color = {0,50,200};
 
+// Cloud event name
+String eventName = "lovesignal";
+
 // Set all of our lights to a specific color
 void fillColor(Color rgb) {
   int i;
@@ -118,6 +121,19 @@ Color stringTOcolor(String scolor){
   return rgb;
 }
 
+// Signal light variables
+bool signalLight = FALSE;     //is the signal lit
+int timeAtLight;              //when was it lit
+int signalDuration = 1 * 60;  //How long in seconds should the signal be lit
+
+// Signal Recieved Handler
+void cloudSignalFound(String event,String data) {
+  Color rgb = stringTOcolor(data);
+  fillColor(rgb);
+  signalLight = TRUE;
+  timeAtLight = Time.now();
+}
+
 //#########################################
 //Main Program
 //#########################################
@@ -129,22 +145,22 @@ void setup() {
   ring.setBrightness(100);
   ring.clear();
   ring.show();
-  // Check our input button
+
+  // Setup the input button
   pinMode(button,INPUT_PULLUP);
+
+  //Subscribe to the cloud events
+  Particle.subscribe(eventName,cloudSignalFound,MY_DEVICES);
 }
 
 // loop() runs over and over again, as quickly as it can execute.
 void loop() {
-  // Turn all LEDs off
-  ring.clear();
-  ring.show();
-
   // Get button state
   buttonState = digitalRead(button);
   if (buttonState==LOW){
     delay(1000);
 
-    // If after 5 sec button is still pressed cycle through colors for as long as button is pressed
+    // If after 1 sec button is still pressed cycle through colors for as long as button is pressed
     buttonState = digitalRead(button);
     if (buttonState==LOW){
       cycleColors();
@@ -153,22 +169,39 @@ void loop() {
       colorFlash(color);
       
     }
+    // Check if the signal is currently lit, if so cancel it
+    else if (signalLight){
+      ring.clear();
+      ring.show();
+      signalLight = FALSE;
+    }
     // If we have a short press light the signal
     else {
-      fillColor(color);
       bool success;
       String scolor = colorTOstring(color);
-      success = Particle.publish("/particle/love/signal",scolor,60,PRIVATE);
+      success = Particle.publish(eventName,scolor,PRIVATE);
       if(!success){
         Color red = {255,0,0};
         colorFlash(red);
       }
       else {
-        delay(10000);
+        signalLight = TRUE;
+        timeAtLight = Time.now();
+        fillColor(color);
       }
       
     }
     
+  }
+
+  // If signal is lit, figure out how long, if we have met duration turn off the signal
+  if(signalLight){
+    int timeLit = Time.now() - timeAtLight;
+    if (timeLit > signalDuration){
+      signalLight = FALSE;
+      ring.clear();
+      ring.show();
+    }
   }
 
 }
